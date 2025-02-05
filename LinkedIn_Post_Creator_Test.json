@@ -1,0 +1,1109 @@
+{
+  "name": "LinkedIn Post Creator Test",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fd95de1e-7bc9-49f4-a258-71551f8a4b67",
+              "name": "node",
+              "value": "={{ $('Convert it to chatInput').item.json.node }}",
+              "type": "object"
+            },
+            {
+              "id": "c638c4cb-5c2e-4cad-b83f-8231d8833509",
+              "name": "data.localFilePath",
+              "value": "={{ $json.localFilePath }}",
+              "type": "string"
+            },
+            {
+              "id": "a82d9cc3-aad8-44db-b6ef-cb08d485c53a",
+              "name": "data.fileType",
+              "value": "={{ $json.fileType }}",
+              "type": "string"
+            },
+            {
+              "id": "890201ca-4c1f-4fe1-a72c-a5e7762373f5",
+              "name": "data.fileExtension",
+              "value": "={{ $json.fileExtension }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a4186bfe-8922-4856-a26d-0f1c5319f4d6",
+      "name": "Data for Document Processing",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const axios = require('axios');\nconst { parse } = require('url');\nconst FileType = require('file-type');\n\nconst url = $('Convert it to chatInput').first().json.node.contentSource;\n\nconst response = await axios.get(url, { responseType: 'arraybuffer' });\n\nif (response.status === 200) {\n    const parsedUrl = parse(url);\n    const filename = parsedUrl.pathname.split('/').pop().replace(/[^a-zA-Z0-9-_.]/g, '_') || 'index.html';  // Default to 'index.html' if no filename\n    \n    // Determine the file type from the buffer\n    const fileType = await FileType.fromBuffer(response.data);\n    let fileMimeType = fileType ? fileType.mime : 'application/octet-stream';  // Default MIME type\n    let fileExt = fileType ? fileType.ext : 'bin';  // Default file extension\n\n    // Convert binary data to base64\n    const base64Data = response.data.toString('base64');\n\n    return {\n        binary: {\n            data: {\n                data: base64Data,  // Base64-encoded binary data\n                fileName: filename,\n                mimeType: fileMimeType\n            }\n        }\n    };\n} else {\n    throw new Error(`Failed to download the file. Status code: ${response.status}`);\n}"
+      },
+      "id": "96c944b9-99bc-4526-a35c-b9f713b2ccd9",
+      "name": "Download HTML Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f68a9887-470c-4382-ab98-50344817b6fc",
+              "name": "node",
+              "value": "={{ $('Data for Document Processing').first().json.node }}",
+              "type": "object"
+            },
+            {
+              "id": "45ea8260-3dc0-4798-bb5f-e8b3976c4067",
+              "name": "data",
+              "value": "={{ $('Data for Document Processing').first().json.data }}",
+              "type": "string"
+            },
+            {
+              "id": "5060a5a1-a905-4d11-8f34-ea1063de8d43",
+              "name": "data.contentHtml",
+              "value": "={{ $json.data }}",
+              "type": "string"
+            },
+            {
+              "id": "ddbce6d6-47d1-49a1-9e16-7aa56cfcef65",
+              "name": "data.localFilePath",
+              "value": "={{ $('Data for Document Processing').first().json.data.localFilePath }}",
+              "type": "string"
+            },
+            {
+              "id": "6db583c1-1e2c-4ec9-8930-20e3f84eb0f7",
+              "name": "data.fileType",
+              "value": "={{ $('Data for Document Processing').first().json.data.fileType }}",
+              "type": "string"
+            },
+            {
+              "id": "83865a44-4ab7-4a61-8389-ae7fb05c5b48",
+              "name": "data.fileExtension",
+              "value": "={{ $('Data for Document Processing').first().json.data.fileExtension }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "79d803e4-7925-4b21-a2c1-94aefe832ae6",
+      "name": "Document Data HTML",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        380,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ======================================================\n// [Description] v1.1.0\n// This code block creates sections from markdown content.\n// It processes the input, generates sections, and outputs results directly within the 'data' object as JSON.\n// It passes through all other top-level objects from $input.first().json unchanged.\n// ======================================================\n\n// =============================\n// Configuration\n// =============================\n\nconst CONFIG = {\n  MAX_HEADER_LEVEL: 3,\n  NEWLINE: \"\\n\",\n};\n\n// =============================\n// Input Variables\n// =============================\n\n// Get the content from the input node\nconst content = $input.first().json.node.contentInput;\n\n// =============================\n// Helper Functions\n// =============================\n\n/**\n * Generates sections from markdown content\n * @param {string} markdownContent - The markdown content to process\n * @returns {Array} - Array of sections\n */\nfunction generateTocWithContent(content) {\n  // Split content into lines and process each line\n  const lines = content.split('\\n');\n  const sections = [];\n  let currentSection = null;\n  \n  // Extract headers (up to h3) and their content\n  const headerSections = lines.filter(line => {\n    const headerMatch = line.match(/^#+/);\n    return headerMatch && headerMatch[0].length <= CONFIG.MAX_HEADER_LEVEL;\n  })\n    .map((header, index) => {\n      const headerLevel = header.match(/^#+/)[0].length;\n      const text = header.replace(/^#+\\s+/, '').trim();\n      \n      // Get content until next h1-h3 header or end\n      const nextHeaderIndex = lines.findIndex((line, i) => {\n        if (i <= lines.indexOf(header)) return false;\n        const match = line.trim().match(/^#+/);\n        return match && match[0].length <= 3;\n      });\n      \n      const sectionContent = lines.slice(\n        lines.indexOf(header) + 1,\n        nextHeaderIndex === -1 ? undefined : nextHeaderIndex\n      ).join(CONFIG.NEWLINE).trim(); // Trim to remove leading/trailing newlines\n      \n      return {\n        itemTitle: text,\n        contentInput: sectionContent,\n        itemIndex: index + 1, // Starting at 1\n        itemLevel: headerLevel\n      };\n    });\n\n  return headerSections;\n}\n\n// =============================\n// Main Execution Block\n// =============================\n\nlet executionLog = [];\n\ntry {\n  // Generate the sections\n  const sections = generateTocWithContent(content);\n  executionLog.push(\"Sections created successfully\");\n\n  // Update the data array with the generated sections\n  $input.first().json.data = sections;\n} catch (error) {\n  executionLog.push(`Error creating sections: ${error.message}`);\n}\n\n// =============================\n// Construct Output JSON\n// =============================\n\nconst finalOutput = {\n  ...$input.first().json,\n  data: $input.first().json.data,\n  code: {\n    success: true,\n    message: \"Sections created successfully\",\n    log: executionLog,\n  },\n};\n\n// =============================\n// Return Output\n// =============================\n\nreturn [{ json: finalOutput }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -280,
+        600
+      ],
+      "id": "50a211a9-8cff-45d7-a823-7ca7cbbf0884",
+      "name": "Create Sections"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ======================================================\n// Clean and Create Image References v1.0.36\n//\n// This code processes Markdown content to find and extract image elements,\n// collects image data into a 'refImages' array, and replaces each image\n// in the content with a token [{image:N}], where N is the index of the image.\n// All other Markdown elements, including links, remain unchanged.\n//\n// Steps:\n// 1. Import required libraries.\n// 2. Initialize input variables and configurations.\n// 3. Iterate over each item in the input data array to create image references.\n// 4. Replace images with tokens using regex based on the image sources.\n// 5. Construct the final output, preserving all original input data.\n// 6. Return the final output.\n//\n// IMPORTANT: By default, this code preserves ALL input data at ALL levels (including nested properties)\n// from $input.first().json in the output, unless the development requirements explicitly specify otherwise.\n// ======================================================\n\n// =============================\n// Import Required Libraries\n// =============================\n\n// No additional libraries are needed for the regex approach.\n\n// =============================\n// Input Variables and Initialization\n// =============================\n\n// Retrieve the first input item's JSON data.\nconst input = $input.first().json;\n\n// Extract the 'data' array from the input. If it doesn't exist, initialize it as an empty array.\nconst dataArray = input.data || [];\n\n// Initialize the image index outside the loop to ensure sequential indexing across all items.\nlet imageIndex = 1; // Starting index for images.\n\n// Initialize the execution log, preserving any existing log entries.\nlet executionLog = input.code && input.code.log ? input.code.log : [];\n\n// =============================\n// Main Execution Block\n// =============================\n\ntry {\n  // Iterate over each item in the 'data' array to create image references.\n  dataArray.forEach(item => {\n\n    // ---------\n    // Setup\n    // ---------\n\n    // Use 'contentInput' from the item as the base content for processing. If it doesn't exist, default to an empty string.\n    const content = item.contentInput || '';\n\n    // Initialize 'contentRefs' with 'contentInput'.\n    item.contentRefs = content;\n\n    // Ensure the 'refImages' array exists in the item to store image references.\n    item.refImages = item.refImages || [];\n\n    // ---------\n    // Extracting Image References and Replacing with Tokens\n    // ---------\n\n    // Regular expression to match Markdown image syntax.\n    const imageMarkdownRegex = /!\\[([^\\]]*)\\]\\(([^)\\s]+)(?:\\s+\"([^\"]*)\")?\\)/g;\n\n    // Replace images in 'contentRefs' with tokens and collect references.\n    item.contentRefs = item.contentRefs.replace(imageMarkdownRegex, (match, altText, src, title) => {\n      // Create an image reference object with the extracted details.\n      const imageRef = {\n        type: 'image',\n        index: imageIndex,\n        content: {\n          text: altText || '',\n          source: src || '',\n          title: title || ''\n        }\n      };\n\n      // Append the image reference to the item's 'refImages' array.\n      item.refImages.push(imageRef);\n\n      // Log the extraction.\n      executionLog.push(`Extracted image with index ${imageIndex} from item \"${item.itemTitle || 'Untitled'}\"`);\n\n      // Increment the global image index for the next image.\n      imageIndex++;\n\n      // Return the replacement token with a space after it.\n      return `[{image:${imageRef.index}}] `;\n    });\n\n    // Log the replacement.\n    executionLog.push(`Replaced images with tokens in item \"${item.itemTitle || 'Untitled'}\"`);\n  });\n\n  // =============================\n  // Constructing the Final Output\n  // =============================\n\n  // Use the spread operator to include all original top-level properties from the input.\n  const finalOutput = {\n    ...input,\n\n    // Update the 'data' array with the processed items.\n    data: dataArray,\n\n    // Include the 'code' object with success status and execution log.\n    code: {\n      success: true,\n      message: \"All items processed successfully.\",\n      log: executionLog\n    }\n  };\n\n  // =============================\n  // Returning the Final Output\n  // =============================\n\n  // Return the final output as an array with a single JSON object.\n  return [{ json: finalOutput }];\n\n} catch (error) {\n  // =============================\n  // Error Handling\n  // =============================\n\n  // If an error occurs during processing, construct an error output.\n  const errorOutput = {\n    ...input,\n\n    // Update the 'code' object with failure status and error message.\n    code: {\n      success: false,\n      message: error.message,\n      log: executionLog\n    }\n  };\n\n  // Return the error output as an array with a single JSON object.\n  return [{ json: errorOutput }];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        600
+      ],
+      "id": "7dee0f71-c85d-4679-b90f-0d9293598e52",
+      "name": "Create Images References"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ======================================================\n// Clean and Create Link References v1.2.2\n//\n// This code processes Markdown content to find and extract link elements,\n// collects link data into a 'refLinks' array without overwriting existing entries,\n// and replaces each link in the content with a token like 'text [{link:N}]',\n// where N is the index of the link.\n// All other Markdown elements remain unchanged.\n//\n// IMPORTANT:\n// - Avoids nested comments to prevent syntax errors.\n// - Uses a robust regex for link processing.\n// - Preserves all existing 'contentRefs' and 'references' data.\n// - Stores link references only in 'refLinks'.\n// - Ensures that link indices are sequential across all items.\n// - Follows all specified guidelines and requirements.\n//\n// Steps:\n// 1. Initialize input variables and configurations.\n// 2. Use robust regex to find and replace markdown links.\n// 3. Update 'contentRefs' and append new link references to 'item.refLinks'.\n// 4. Construct the final output, preserving all original input data.\n// 5. Return the final output.\n//\n// ======================================================\n\n// =============================\n// Input Variables and Initialization\n// =============================\n\n// Original input data\nconst input = $input.first().json;\n\n// Example input structure:\n// {\n//   auth: { /* authentication data */ },\n//   data: [ /* array of items */ ],\n//   code: { /* previous code execution data */ },\n//   // other properties\n// }\n\n// Array of data items to process\nconst dataArray = input.data || [];\n\n// Execution log array\nlet executionLog = input.code?.log || [];\n\n// Initialize the global link index counter\nlet globalLinkIndex = 1;\n\n// =============================\n// Helper Functions\n// =============================\n\n/**\n * Escapes special characters in a string for use in a regular expression\n * @param {string} string - The string to escape\n * @returns {string} - The escaped string\n */\nfunction escapeRegExp(string) {\n  return string.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n}\n\n// =============================\n// Main Execution Block\n// =============================\n\ntry {\n  // Iterate over each item in the 'data' array\n  dataArray.forEach((item) => {\n    // Preserve existing 'references' array (e.g., images)\n    item.references = Array.isArray(item.references) ? item.references : [];\n\n    // Initialize or preserve 'refLinks' array\n    item.refLinks = Array.isArray(item.refLinks) ? item.refLinks : [];\n\n    // Use existing contentRefs if available, otherwise fall back to contentInput\n    let content = (typeof item.contentRefs === 'string') ? item.contentRefs : (item.contentInput || '');\n\n    // Log the initial state\n    executionLog.push(`Processing item \"${item.itemTitle || 'Untitled'}\"`);\n\n    // =============================\n    // Link Processing with Robust Regex\n    // =============================\n\n    // Regex pattern to match markdown links\n    const linkRegex = /\\[([\\s\\S]*?)\\]\\(([\\s\\S]*?)\\)/g;\n\n    let matches;\n    const replacements = [];\n\n    // Find all links in the content\n    while ((matches = linkRegex.exec(content)) !== null) {\n      const fullMatch = matches[0]; // The full markdown link\n      let linkText = matches[1]; // The text inside the brackets\n      let linkUrl = matches[2]; // The URL inside the parentheses\n\n      // Remove any surrounding whitespace from text and URL\n      linkText = linkText.trim();\n      linkUrl = linkUrl.trim();\n\n      // Use the global link index for the new reference\n      const linkIndex = globalLinkIndex;\n\n      // Create link reference object\n      const linkRef = {\n        type: 'link',\n        index: linkIndex,\n        content: {\n          text: linkText,\n          source: linkUrl,\n          title: '', // Title is not captured in standard markdown links\n        },\n      };\n\n      // Add link reference to the 'item.refLinks' array\n      item.refLinks.push(linkRef);\n\n      // Increment the global link index counter\n      globalLinkIndex++;\n\n      // Construct the replacement text\n      const replacementText = `${linkText} [{link:${linkIndex}}]`;\n\n      // Prepare replacement\n      replacements.push({\n        originalText: fullMatch,\n        replacementText: replacementText,\n      });\n\n      executionLog.push(`Found link: \"${linkText}\" with URL: \"${linkUrl}\"`);\n    }\n\n    // Perform replacements\n    replacements.forEach(({ originalText, replacementText }) => {\n      const escapedOriginal = escapeRegExp(originalText);\n      const regex = new RegExp(escapedOriginal, 'g');\n      content = content.replace(regex, replacementText);\n    });\n\n    // Update contentRefs with processed content\n    item.contentRefs = content;\n\n    // Log completion for the item\n    executionLog.push(\n      `Processed ${replacements.length} links in item \"${item.itemTitle || 'Untitled'}\"`\n    );\n  });\n\n  // =============================\n  // Constructing the Final Output\n  // =============================\n\n  const finalOutput = {\n    ...input,        // Preserve all top-level input properties\n    data: dataArray, // Contains all items with updated 'refLinks' and 'contentRefs'\n    code: {\n      success: true,\n      message: 'All items processed successfully.',\n      log: executionLog,\n    },\n  };\n\n  // =============================\n  // Return Output\n  // =============================\n\n  // Return the final output as an array with a single object\n  return [{ json: finalOutput }];\n\n} catch (error) {\n  // =============================\n  // Error Handling\n  // =============================\n\n  // Log error message\n  executionLog.push(`Error: ${error.message}`);\n\n  // Construct error output\n  const finalOutput = {\n    ...input,\n    code: {\n      success: false,\n      message: error.message,\n      log: executionLog,\n    },\n  };\n\n  // Return the error output\n  return [{ json: finalOutput }];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        600
+      ],
+      "id": "285358ac-c398-4eec-a1f8-700843fbdead",
+      "name": "Create Links References"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "08749e8a-153c-40a0-804b-dfd7c331814b",
+              "name": "node",
+              "value": "={{ $('Convert it to chatInput').first().json.node }}",
+              "type": "object"
+            },
+            {
+              "id": "1a17a018-d49f-4c00-982d-90b8631dbfd2",
+              "name": "node.contentInput",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "include": "except",
+        "excludeFields": "code, data, success, text",
+        "options": {}
+      },
+      "id": "31c7ce2d-4cbf-4459-8a0d-bcf16ab52a3f",
+      "name": "Set Node Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        540,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ======================================================\n// Create Clean Content Text v1.0.0\n//\n// This code takes the contentRefs field and removes all link and image tokens\n// [{link:n}] and [{image:n}] to create a clean text version in contentText.\n// The original contentRefs remains unchanged.\n//\n// Steps:\n// 1. Get contentRefs from each data item\n// 2. Remove link and image tokens using regex\n// 3. Store clean text in contentText field\n// 4. Return all input data unchanged\n//\n// ======================================================\n\n// =============================\n// Input Variables and Initialization\n// =============================\n\n// Original input data\nconst input = $input.first().json;\n\n// Array of data items to process\nconst dataArray = input.data || [];\n\n// Execution log array\nlet executionLog = input.code?.log || [];\n\n// =============================\n// Main Execution Block\n// =============================\n\ntry {\n  // Iterate over each item in the 'data' array\n  dataArray.forEach((item) => {\n    // Get contentRefs or use empty string if not available\n    const content = item.contentRefs || '';\n\n    // Remove link and image tokens using regex\n    item.contentText = content.replace(/\\[{(?:link|image):\\d+}\\]/g, '');\n\n    // Log the processing\n    executionLog.push(`Cleaned tokens from item \"${item.itemTitle || 'Untitled'}\"`);\n  });\n\n  // =============================\n  // Constructing the Final Output\n  // =============================\n\n  const finalOutput = {\n    ...input,        // Preserve all top-level input properties\n    data: dataArray, // Contains all items with new contentText field\n    code: {\n      success: true,\n      message: 'Content cleaned successfully.',\n      log: executionLog,\n    },\n  };\n\n  // Return the final output as an array with a single object\n  return [{ json: finalOutput }];\n\n} catch (error) {\n  // =============================\n  // Error Handling\n  // =============================\n\n  const finalOutput = {\n    ...input,\n    code: {\n      success: false,\n      message: error.message,\n      log: executionLog,\n    },\n  };\n\n  return [{ json: finalOutput }];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        600
+      ],
+      "id": "983e66e0-674a-413a-93ef-8c464917a54b",
+      "name": "Create clean Content Text"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ======================================================\n// Output Content Text Only v1.0.1\n//\n// This code filters the input data to output only contentText, itemIndex, and itemTitle fields.\n// All other fields are removed from the output.\n//\n// Steps:\n// 1. Get input data items\n// 2. Create new filtered items containing only contentText, itemIndex, and itemTitle\n// 3. Return filtered data\n//\n// ======================================================\n\n// =============================\n// Input Variables and Initialization\n// =============================\n\n// Original input data\nconst input = $input.first().json;\n\n// Array of data items to process\nconst dataArray = input.data || [];\n\n// Execution log array\nlet executionLog = input.code?.log || [];\n\n// =============================\n// Main Execution Block\n// =============================\n\ntry {\n  // Create new filtered array with only required fields\n  const filteredData = dataArray.map((item) => {\n    return {\n      contentText: item.contentText || '',\n      itemTitle: item.itemTitle,\n      itemIndex: item.itemIndex\n    };\n  });\n\n  // Log the processing\n  executionLog.push(`Filtered ${dataArray.length} items to contentText, itemIndex, and itemTitle only`);\n\n  // =============================\n  // Constructing the Final Output\n  // =============================\n\n  const finalOutput = {\n    data: filteredData,  // Contains only filtered items\n    code: {\n      success: true,\n      message: 'Data filtered successfully.',\n      log: executionLog,\n    },\n  };\n\n  // Return the final output as an array with a single object\n  return [{ json: finalOutput }];\n\n} catch (error) {\n  // =============================\n  // Error Handling\n  // =============================\n\n  const finalOutput = {\n    data: [],  // Empty array in case of error\n    code: {\n      success: false,\n      message: error.message,\n      log: executionLog,\n    },\n  };\n\n  return [{ json: finalOutput }];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        600
+      ],
+      "id": "04d176c7-dc9e-46b4-a793-c6dc52c17c47",
+      "name": "Filter Data Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ======================================================\n// HTML Content Cleaner & Metadata Extractor v1.0.4\n// This code block cleans HTML content while preserving document structure and extracting metadata.\n// It handles content cleaning, metadata extraction and outputs results directly within the 'data' object as JSON.\n// ======================================================\n\n// =============================\n// Configuration\n// =============================\n\nconst CONFIG = {\n  PRESERVE_ELEMENTS: {\n    a: [\"href\", \"title\"],\n    img: [\"src\", \"alt\", \"title\"],\n    table: [\"class\"],\n    th: [\"scope\"],\n    td: [\"rowspan\", \"colspan\"],\n    code: [\"class\"],\n    pre: [\"class\"],\n    blockquote: [\"cite\"],\n    cite: true,\n    sup: true,\n    sub: true,\n    ul: true,\n    ol: true,\n    li: true,\n    dl: true,\n    dt: true,\n    dd: true,\n    math: true,\n    figure: true,\n    figcaption: true,\n  },\n  REMOVE_SELECTORS: [\n    \"script\",\n    \"style\",\n    \"iframe\",\n    \"form\",\n    \".vector-menu\",\n    \".vector-header\",\n    \".mw-jump-link\",\n  ],\n};\n\n// =============================\n// Input Variables\n// =============================\n\n// Get input items\nconst items = $input.all();\nconst contentHtml = items[0].json.data.contentHtml; // HTML content to clean\nconst preserveMetadata = items[0].json.data.preserveMetadata || true; // Flag to preserve metadata\n\n// =============================\n// Import Required Libraries\n// =============================\n\nconst { JSDOM } = require(\"jsdom\");\nconst { Readability } = require(\"@mozilla/readability\");\n\n// =============================\n// Helper Functions\n// =============================\n\n/**\n * Extracts metadata from the HTML document\n * @param {Document} document - The HTML document\n * @returns {Object} - Extracted metadata\n */\nfunction extractMetadata(document) {\n  const metadata = {\n    itemTitle: null,\n    itemAuthor: null,\n    description: null,\n    language: null,\n    datePublished: null,\n    dateModified: null,\n    contentMetrics: {\n      wordCount: 0,\n      hasImages: false,\n      hasTables: false,\n      hasCode: false,\n      hasFormulas: false,\n      sections: [],\n      citations: [],\n    },\n  };\n\n  try {\n    // Extract basic metadata\n    metadata.itemTitle =\n      document.querySelector(\"title\")?.textContent?.trim() ||\n      document\n        .querySelector('meta[property=\"og:title\"]')\n        ?.getAttribute(\"content\") ||\n      document.querySelector(\"h1\")?.textContent?.trim();\n\n    metadata.itemAuthor =\n      document.querySelector('meta[name=\"author\"]')?.getAttribute(\"content\") ||\n      document\n        .querySelector('meta[property=\"article:author\"]')\n        ?.getAttribute(\"content\");\n\n    metadata.description =\n      document\n        .querySelector('meta[name=\"description\"]')\n        ?.getAttribute(\"content\") ||\n      document\n        .querySelector('meta[property=\"og:description\"]')\n        ?.getAttribute(\"content\");\n\n    metadata.language = document.documentElement?.lang;\n\n    // Extract dates\n    metadata.datePublished = document\n      .querySelector('meta[property=\"article:published_time\"]')\n      ?.getAttribute(\"content\");\n    metadata.dateModified = document\n      .querySelector('meta[property=\"article:modified_time\"]')\n      ?.getAttribute(\"content\");\n\n    // Content metrics\n    metadata.contentMetrics.wordCount = document.body.textContent\n      .trim()\n      .split(/\\s+/).length;\n    metadata.contentMetrics.hasImages =\n      document.querySelectorAll(\"img\").length > 0;\n    metadata.contentMetrics.hasTables =\n      document.querySelectorAll(\"table\").length > 0;\n    metadata.contentMetrics.hasCode =\n      document.querySelectorAll(\"pre, code\").length > 0;\n    metadata.contentMetrics.hasFormulas =\n      document.querySelectorAll(\".math, .formula\").length > 0;\n\n    // Extract sections\n    document.querySelectorAll(\"h1, h2, h3\").forEach((heading) => {\n      metadata.contentMetrics.sections.push({\n        level: parseInt(heading.tagName[1]),\n        title: heading.textContent.trim(),\n      });\n    });\n\n    return metadata;\n  } catch (error) {\n    console.error(\"Error extracting metadata:\", error);\n    return metadata;\n  }\n}\n\n/**\n * Cleans and structures HTML content\n * @param {string} html - Raw HTML content\n * @returns {Object} - Cleaned HTML and metadata\n */\nfunction cleanHtmlStructure(html) {\n  try {\n    const dom = new JSDOM(html);\n    const document = dom.window.document;\n\n    // Extract metadata before cleaning\n    const metadata = extractMetadata(document);\n\n    // Remove unwanted elements\n    CONFIG.REMOVE_SELECTORS.forEach((selector) => {\n      document.querySelectorAll(selector).forEach((element) => {\n        element.remove();\n      });\n    });\n\n    // Clean attributes while preserving important ones\n    document.querySelectorAll(\"*\").forEach((element) => {\n      const tagName = element.tagName.toLowerCase();\n      const preserveConfig = CONFIG.PRESERVE_ELEMENTS[tagName];\n\n      if (preserveConfig) {\n        if (preserveConfig === true) return;\n\n        const attributes = Array.from(element.attributes);\n        attributes.forEach((attr) => {\n          if (!preserveConfig.includes(attr.name)) {\n            element.removeAttribute(attr.name);\n          }\n        });\n      }\n    });\n\n    // Ensure proper document structure\n    if (!document.querySelector(\"article\")) {\n      const article = document.createElement(\"article\");\n      const body = document.body;\n      while (body.firstChild) {\n        article.appendChild(body.firstChild);\n      }\n      body.appendChild(article);\n    }\n\n    return {\n      html: document.documentElement.outerHTML,\n      metadata,\n    };\n  } catch (error) {\n    throw new Error(`Failed to clean HTML: ${error.message}`);\n  }\n}\n\n// =============================\n// Main Execution Block\n// =============================\n\nlet executionLog = [];\nlet errors = [];\n\ntry {\n  // Clean HTML and extract metadata\n  const { html: cleanedHtml, metadata } = cleanHtmlStructure(contentHtml);\n  executionLog.push('Successfully cleaned HTML and extracted metadata');\n\n  // Convert cleaned HTML to Base64\n  const base64Content = Buffer.from(cleanedHtml).toString('base64');\n  executionLog.push('Converted cleaned HTML to Base64');\n\n  // Process all items while preserving original data\n  const processedItems = items.map(item => ({\n    json: {\n      ...item.json,\n      data: {\n        ...item.json.data,\n        contentBase64: base64Content,  // Add Base64 content\n        contentType: 'text/html',      // Add MIME type\n        filename: 'content.html',      // Add filename\n        metadata: {\n          ...metadata,\n          extractedAt: new Date().toISOString()\n        }\n      },\n      code: {\n        success: true,\n        message: \"Successfully cleaned HTML and converted to Base64\",\n        log: executionLog\n      }\n    }\n  }));\n\n  return processedItems;\n\n} catch (error) {\n  errors.push(error.message);\n  return items.map(item => ({\n    json: {\n      ...item.json,\n      code: {\n        success: false,\n        message: `Failed to process HTML: ${error.message}`,\n        log: executionLog,\n        errors\n      }\n    }\n  }));\n}\n"
+      },
+      "id": "e5d809d6-4b96-409e-b94f-201df91967f3",
+      "name": "Clean HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        580,
+        -80
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        320,
+        320
+      ],
+      "id": "9ad9e5a4-da83-4757-b09d-77b9974f2dad",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.chatInput }}\n",
+                    "rightValue": "=https://drive.google.com",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notStartsWith"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "888310ce-f732-4774-8519-983fefa3f237",
+                    "leftValue": "={{ $json.chatInput }}",
+                    "rightValue": "https://drive.google.com",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -440,
+        220
+      ],
+      "id": "5e1adbf7-3e91-41db-b001-61c3f8c7b2e3",
+      "name": "Is Google Drive File"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.chatInput }}",
+          "mode": "url"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -200,
+        340
+      ],
+      "id": "31ce5754-4ac1-4d7a-8163-913dca822678",
+      "name": "Google Drive",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "jN0F0e8Ot8TrIxE9",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://vigilant_varahamihira:8000/process/",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "filename",
+              "value": "file.pdf"
+            },
+            {
+              "name": "output_format",
+              "value": "md"
+            },
+            {
+              "name": "extract_tables",
+              "value": "true"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        20,
+        340
+      ],
+      "id": "5091f766-23e9-4104-acfe-e1591f35b587",
+      "name": "Convert File"
+    },
+    {
+      "parameters": {
+        "includeOtherFields": true,
+        "include": "selected",
+        "includeFields": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -840,
+        780
+      ],
+      "id": "3d245481-d12b-4878-8763-37ac4c18e719",
+      "name": "Filter Irrelevant Variables"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "kkETwax6b61uV2ec",
+          "mode": "list",
+          "cachedResultName": "🛠️ Tool Remove Irrelevant Sections"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        -600,
+        780
+      ],
+      "id": "8eec0f9d-ecee-40e1-9d81-5e7f2746de4d",
+      "name": "Fix and Filter Irrelevant Blocks",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1bccd17d-c097-4fa3-bdcf-fe9fa7221697",
+              "name": "fullDocument",
+              "value": "={{ \n  `# ` + $json.data.itemTitle + `\\n\\n` + \n  $json.data.map(data => \n    `${data.itemTitle ? `## ${data.itemTitle}\\n\\n` : ''}${data.contentText}\\n\\n`\n  ).join('')\n}}\n",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bfd17918-95aa-4659-ba6a-142b53899031",
+      "name": "Merge Full Document",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -360,
+        780
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Need Review\nThese functions are not preserving the images properly.",
+        "height": 200,
+        "width": 1460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -760,
+        560
+      ],
+      "id": "b6207655-9c71-4f2a-a525-b425488ed9a5",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "html": "={{ $json.data.contentHtml }}",
+        "destinationKey": "text",
+        "options": {
+          "keepDataImages": false,
+          "useLinkReferenceDefinitions": false
+        }
+      },
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        140,
+        60
+      ],
+      "id": "bdd9e8bc-e997-4ed5-89c1-26c55e1231ba",
+      "name": "Convert HTML to Markdown"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "fullDocument",
+        "binaryPropertyName": "Document",
+        "options": {
+          "encoding": "utf16",
+          "fileName": "Document.txt"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -80,
+        780
+      ],
+      "id": "181f5f38-60c1-43f3-8fda-83b74427f578",
+      "name": "Full Document"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "582c9880-f32c-4642-97c6-35ad441c6d12",
+      "name": "OpenAI Chat Model4",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        1220
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "EPkkHfMeirksgRsV",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5fa4f22c-284a-41f7-b89d-0f7d93169533",
+              "name": "postLinkedIn",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4dbf57bf-db9b-4c6b-a370-d48ffb32f6c4",
+      "name": "Data for Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "postLinkedIn",
+        "binaryPropertyName": "PostLinkedIn",
+        "options": {
+          "encoding": "utf16",
+          "fileName": "Post.txt"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        540,
+        1000
+      ],
+      "id": "7a2db95f-1b43-4580-82f6-9da452462d14",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert LinkedIn professional blogger, covering the topic of AI and its implications in society.\n \nRead carefully the article below and generate a Linkedin post with around 400 words. Focus on extracting key insights and strong statements, more than doing direct summarization. Select the key takeaways from the document that will have more impact on the readers and have them more engaged and focus on it. Make it well connected reading from one paragraph to the next.\n\nMake it easy to read and engaging. Create a first sentence to act as the hook, knowing that only the first two lines will appear on the LinkedIn feed when users scroll down. Then have a short introduction (don't mention the term introduction), followed by the key takeaways (don't mention the expression key takeaways), and a conclusion without using the word conclusion or similar.\n\nUse some emojis for example to number parts of the text or highlight something relevant but keep it very credible and professional. \n\nMention the author by name: AuthorName after the initial paragraph / introduction of the post, and before you start the key takeaways of the article.\n\nGive credit to the author and some sort of compliment for the article: AuthorName and add a link to the article at the bottom of the post as shown on the example below.\n\nIt is totally critical that you don't use bold, italics, * , ** , __ ,  or some other type of markdown formatting. It is not supported on LinkedIn and cannot be used.\n\nReturn only the text of the LinkedIn post and no other variables or comments.\n\n## Input Text:\n---\n\n{{ $json.fullDocument }}\n\n---\n\nUse the following post on another topic as a good example of a successful post:\n\n\nAutonomous AI agents will form a whole new ecosystem, where they don’t just complete tasks but find each other, collaborate, and transact seamlessly. Imagine a future where agents operate within a trusted ecosystem, guided by a shared framework of transparency. This is Agentic Mesh: a vision where AI agents independently drive productivity and innovation with minimal human intervention. \n\nEric Broda's amazing article shares how this interconnected mesh of autonomous agents is setting a new standard for collaboration and efficiency. 💼\n\nHere are the key insights:\n\n1️⃣ What is Agentic Mesh? \nIt’s an interconnected network allowing autonomous agents to engage and transact securely. Rather than acting in isolation, agents operate as collaborative entities, creating a dynamic ecosystem.\n\n2️⃣ Trust as the Core Pillar \nWith certifications, audit trails, and feedback mechanisms, Agentic Mesh ensures agents are dependable and aligned with their intended roles. Trust isn’t just a feature; it's foundational to this ecosystem. 🛡️\n\n3️⃣ The Role of GenAI \nGenerative AI powers these agents, enabling complex reasoning and task execution autonomously. This technology leap transforms them from simple tools into active, decision-making participants. 🌐\n\n4️⃣ Framework for Interaction \nBuilt on components like marketplaces, registries, and structured protocols, Agentic Mesh streamlines discovery, collaboration, and accountability, creating a robust model where agents fulfill diverse, complex needs.\n\n5️⃣ A New Era of Work & Collaboration \nAs agents become more capable, businesses can scale like never before, with real-time responsiveness and automated operations. Agentic Mesh could redefine efficiency and strategy in business.\n\nAgentic Mesh is a groundbreaking concept that could be a key pillar on the path to an AI-driven future. Great work, Eric Broda.\n\n🔗 Read the full article: \nAgentic Mesh: The Future of Generative AI-Enabled Autonomous Agent Ecosystems :(linked to the article)",
+        "options": {}
+      },
+      "id": "94148c3f-fb35-4318-9ec7-ce97b8f2b5d0",
+      "name": "Create Post for LinkedIn",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        -140,
+        1000
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## High Level Post for Articles",
+        "height": 442,
+        "width": 384,
+        "color": 4
+      },
+      "id": "25bf92c7-4ebc-4b2b-a161-1d666ba366a8",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        940
+      ]
+    },
+    {
+      "parameters": {
+        "trigger": [
+          "app_mention"
+        ],
+        "channelId": {
+          "__rl": true,
+          "value": "C08B64ATUP8",
+          "mode": "list",
+          "cachedResultName": "linkedin-bot"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.slackTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1020,
+        220
+      ],
+      "id": "e3ab0955-3bf5-41eb-8bca-70202fedbf6b",
+      "name": "Slack Trigger",
+      "webhookId": "60045402-0d0c-489e-8fee-01aebd02740a",
+      "credentials": {
+        "slackApi": {
+          "id": "myUwJbIoFRZ4Iefw",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Slack Trigger\nWhen a slack message triggers the workflow.\nThe URL from the message is extracted and send to check if its a URL or a google drive PDF link. ",
+        "height": 280,
+        "width": 720,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1060,
+        120
+      ],
+      "id": "fe89d22a-4ccc-4b6d-b3c2-8e89e093d9bc",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      sessionId: \"4ee3dbb178b742c5add3c1ce85b0a4d5\", // You can replace this with a dynamic value if needed\n      action: \"sendMessage\",\n      chatInput: items[0].json.blocks[0].elements[0].elements[2].url\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -840,
+        220
+      ],
+      "id": "8d06fe11-02aa-4c68-98a8-824eba92cc79",
+      "name": "Return URL from Slack trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "04fd5edb-36ee-4e97-958a-bc095f2ddf37",
+              "name": "node.userId",
+              "value": "={{ $json.auth.user_id }}",
+              "type": "string"
+            },
+            {
+              "id": "f22f1d58-33ea-45f7-b5dd-e032df891a5f",
+              "name": "node.contentSource",
+              "value": "={{ $json.chatInput }}",
+              "type": "string"
+            },
+            {
+              "id": "583daf37-e02e-49df-ad25-35ca056149a9",
+              "name": "node.itemCollectionId",
+              "value": "={{ $json.data.perspective_id }}",
+              "type": "string"
+            },
+            {
+              "id": "d3cfe9d6-d5d1-42bb-8106-3a24f12cf69d",
+              "name": "node.itemId",
+              "value": "={{ $json.data.nodeId }}",
+              "type": "string"
+            },
+            {
+              "id": "ff6c1479-a47f-4360-8761-1741c3f1b740",
+              "name": "node.itemType",
+              "value": "DOCUMENT",
+              "type": "string"
+            },
+            {
+              "id": "2193a221-fea0-4cee-9e55-962578564aec",
+              "name": "node.itemDocumentId",
+              "value": "={{ $json.data.nodeId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "58cea1b0-d1b7-4704-a49b-e83f5584b597",
+      "name": "Convert it to chatInput",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -640,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## PDF PARSER\nIf google drive PDF, PDF is Parsed using Docling.",
+        "height": 240,
+        "width": 420,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        260
+      ],
+      "id": "b78756b7-0809-4b08-8b60-7a2c10b59c34",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## HTML WEBPAGE\nIf its a HTML Webpage, it is downloaded, cleaned and converted to Markdown.",
+        "height": 400,
+        "width": 1000,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        -160
+      ],
+      "id": "775ffe70-174c-4a2d-b368-94225ab9d162",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.node.contentSource }}",
+        "options": {}
+      },
+      "id": "e9e2a26d-5fc9-4be2-9614-0ef1a46c7dae",
+      "name": "Download Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C08B64ATUP8",
+          "mode": "list",
+          "cachedResultName": "linkedin-bot"
+        },
+        "text": "={{ $json.postLinkedIn }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        540,
+        1180
+      ],
+      "id": "5f22b11c-0fdd-43da-b48f-7acfe6c26b7b",
+      "name": "Send the post to slack channel",
+      "webhookId": "6537d9b3-9bbb-4be3-b481-e2fe9ef1b396",
+      "credentials": {
+        "slackApi": {
+          "id": "myUwJbIoFRZ4Iefw",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Output \n**As txt file**\n**As a message to the slack channel**",
+        "height": 440,
+        "width": 500,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        940
+      ],
+      "id": "af32834a-6093-4595-ad79-d594d5cd62fa",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C08B64ATUP8",
+          "mode": "list",
+          "cachedResultName": "linkedin-bot"
+        },
+        "text": "Post is generating please wait...",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        -940,
+        440
+      ],
+      "id": "4d1e3ad2-a3de-41f4-bdfb-5b0d22529f75",
+      "name": "Post under process message to user",
+      "webhookId": "6537d9b3-9bbb-4be3-b481-e2fe9ef1b396",
+      "credentials": {
+        "slackApi": {
+          "id": "myUwJbIoFRZ4Iefw",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Data for Document Processing": {
+      "main": [
+        [
+          {
+            "node": "Download Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download HTML Page": {
+      "main": [
+        [
+          {
+            "node": "Data for Document Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Data HTML": {
+      "main": [
+        [
+          {
+            "node": "Clean HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Sections": {
+      "main": [
+        [
+          {
+            "node": "Create Images References",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Images References": {
+      "main": [
+        [
+          {
+            "node": "Create Links References",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Links References": {
+      "main": [
+        [
+          {
+            "node": "Create clean Content Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Node Data": {
+      "main": [
+        [
+          {
+            "node": "Create Sections",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create clean Content Text": {
+      "main": [
+        [
+          {
+            "node": "Filter Data Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Data Fields": {
+      "main": [
+        [
+          {
+            "node": "Filter Irrelevant Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean HTML": {
+      "main": [
+        [
+          {
+            "node": "Convert HTML to Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Set Node Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Google Drive File": {
+      "main": [
+        [
+          {
+            "node": "Download HTML Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Convert File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert File": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Filter Irrelevant Variables": {
+      "main": [
+        [
+          {
+            "node": "Fix and Filter Irrelevant Blocks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix and Filter Irrelevant Blocks": {
+      "main": [
+        [
+          {
+            "node": "Merge Full Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Full Document": {
+      "main": [
+        [
+          {
+            "node": "Full Document",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Post for LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert HTML to Markdown": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Create Post for LinkedIn",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data for Output": {
+      "main": [
+        [
+          {
+            "node": "Send the post to slack channel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Post for LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Data for Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Trigger": {
+      "main": [
+        [
+          {
+            "node": "Return URL from Slack trigger",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Post under process message to user",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        []
+      ]
+    },
+    "Return URL from Slack trigger": {
+      "main": [
+        [
+          {
+            "node": "Convert it to chatInput",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert it to chatInput": {
+      "main": [
+        [
+          {
+            "node": "Is Google Drive File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Content": {
+      "main": [
+        [
+          {
+            "node": "Document Data HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "263b1ad7-a655-4f96-a633-a05031d290e4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "MAVav9MI8zQnUTpm",
+  "tags": []
+}
